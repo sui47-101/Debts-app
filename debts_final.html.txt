@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ترتيب الديون — التطبيق</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root{
+      --primary:#0d6efd;
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --muted:#6c757d;
+      --radius:12px;
+    }
+    body{ background:var(--bg); font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", sans-serif; padding:20px; }
+    .app-shell{ max-width:1100px; margin:0 auto; }
+    .topbar{ display:flex; gap:12px; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .card-sum{ border-radius:10px; padding:12px; background:var(--card); box-shadow:0 6px 18px rgba(20,20,40,0.04); }
+    .summary{ display:flex; gap:12px; flex-wrap:wrap; }
+    .sum-item{ flex:1 1 200px; padding:10px; border-radius:8px; background:linear-gradient(180deg,#fff,#f7fbff); }
+    .sum-title{ font-size:13px; color:var(--muted); }
+    .sum-value{ font-size:20px; font-weight:700; margin-top:6px; }
+    table.custom-table thead th{ background:linear-gradient(90deg,var(--primary),#5aa6ff); color:#fff; border:0; }
+    tr.overdue td{ background:#fff0f0 !important; }
+    tr.near td{ background:#fffaf0 !important; }
+    .paid-row td{ text-decoration:line-through; color:#8b8b8b; opacity:0.9; }
+    /* زر + ثابت أعلى يمين */
+    .btn-add-fixed{
+      position:fixed;
+      top:18px;
+      right:18px;
+      z-index:1200;
+      border-radius:50%;
+      width:54px;
+      height:54px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow:0 6px 18px rgba(0,0,0,0.12);
+    }
+    /* صفحة الدخول */
+    .login-shell{ max-width:420px; margin:60px auto; }
+    @media (max-width:720px){
+      .topbar{ flex-direction:column; align-items:stretch; }
+      .summary{ flex-direction:column; }
+      .btn-add-fixed{ width:48px; height:48px; top:12px; right:12px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- زر اضافة ثابت -->
+  <button id="globalAddBtn" class="btn btn-primary btn-add-fixed" title="إضافة دين جديد">
+    <i class="bi bi-plus-lg" style="font-size:1.25rem;color:white"></i>
+  </button>
+
+  <!-- شاشة تسجيل الدخول -->
+  <div id="loginView" class="login-shell">
+    <div class="card p-4">
+      <h4 class="mb-3">تسجيل دخول</h4>
+      <form id="loginForm">
+        <div class="mb-2">
+          <label class="form-label">البريد الإلكتروني</label>
+          <input id="loginEmail" class="form-control" placeholder="example@domain.com" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">كلمة المرور</label>
+          <input id="loginPassword" type="password" class="form-control" required>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary" type="submit">دخول</button>
+          <button id="demoAdmin" type="button" class="btn btn-outline-secondary">تجربة Admin</button>
+          <button id="demoViewer" type="button" class="btn btn-outline-secondary">تجربة Viewer</button>
+        </div>
+        <div class="mt-3 text-muted" style="font-size:13px">
+          حساب رئيسي: <b>admin@debt.app</b> / admin123<br>
+          حساب عرض فقط: <b>viewer@debt.app</b> / viewer123
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- واجهة التطبيق -->
+  <div id="appView" class="app-shell" style="display:none;">
+    <div class="topbar">
+      <div>
+        <h3 class="mb-0">📋 ترتيب الديون</h3>
+        <div id="welcomeText" class="text-muted">—</div>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <div class="me-2 text-muted" id="roleBadge"></div>
+        <button id="manageUsersBtn" class="btn btn-sm btn-outline-secondary" style="display:none;"><i class="bi bi-people"></i> المستخدمين</button>
+        <button id="logoutBtn" class="btn btn-sm btn-danger"><i class="bi bi-box-arrow-left"></i> خروج</button>
+      </div>
+    </div>
+
+    <div class="card-sum mb-3">
+      <div class="summary">
+        <div class="sum-item">
+          <div class="sum-title">مجموع كل الديون</div>
+          <div class="sum-value" id="sumAll">0</div>
+        </div>
+        <div class="sum-item">
+          <div class="sum-title">المدفوع</div>
+          <div class="sum-value text-success" id="sumPaid">0</div>
+        </div>
+        <div class="sum-item">
+          <div class="sum-title">المتبقي</div>
+          <div class="sum-value text-danger" id="sumUnpaid">0</div>
+        </div>
+        <div class="sum-item">
+          <div class="sum-title">المتأخرة</div>
+          <div class="sum-value text-warning" id="sumOverdue">0</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="d-flex gap-2 mb-2">
+      <input id="searchInput" class="form-control form-control-sm" placeholder="بحث باسم الزبون أو ملاحظة">
+      <select id="filterSelect" class="form-select form-select-sm" style="width:170px;">
+        <option value="all">الكل</option>
+        <option value="unpaid">غير مدفوع</option>
+        <option value="paid">مدفوع</option>
+        <option value="overdue">متأخرة</option>
+      </select>
+      <button id="exportCsvBtn" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet"></i> تصدير CSV</button>
+    </div>
+
+    <!-- قائمة الزبائن (مجموعة الديون لكل زبون) -->
+    <div class="table-responsive">
+      <table class="table table-hover custom-table align-middle">
+        <thead>
+          <tr>
+            <th>الزبون</th>
+            <th>عدد الديون</th>
+            <th>مجموع الزبون</th>
+            <th>المتبقي (غير مدفوع)</th>
+            <th>الحالة</th>
+            <th style="width:200px">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="customersBody">
+          <!-- يتم ملؤها بالـ JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- مودال اضافة/تعديل دين -->
+  <div class="modal fade" id="debtModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <form id="debtForm" class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="debtModalTitle">إضافة دين جديد</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">اسم الزبون</label>
+            <input id="debtCustomer" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">المبلغ</label>
+            <input id="debtAmount" type="number" step="0.01" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">تاريخ الاستحقاق</label>
+            <input id="debtDue" type="date" class="form-control" required>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">ملاحظة (اختياري)</label>
+            <textarea id="debtNote" class="form-control" rows="2"></textarea>
+          </div>
+          <input type="hidden" id="editingDebtId" value="">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+          <button type="submit" class="btn btn-primary">حفظ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- مودال ادارة المستخدمين (لـ Admin) -->
+  <div class="modal fade" id="usersModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">إدارة المستخدمين</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="usersList" class="mb-3"></div>
+          <hr>
+          <h6>إضافة مستخدم جديد</h6>
+          <div class="mb-2">
+            <input id="newUserEmail" class="form-control" placeholder="البريد الإلكتروني">
+          </div>
+          <div class="mb-2">
+            <input id="newUserPass" class="form-control" placeholder="كلمة المرور">
+          </div>
+          <div class="mb-2">
+            <select id="newUserRole" class="form-select">
+              <option value="viewer">عرض فقط (Viewer)</option>
+              <option value="admin">مدير (Admin)</option>
+            </select>
+          </div>
+          <button id="addUserBtn" class="btn btn-sm btn-primary">إضافة</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    /* ---------- بيانات افتراضية (لو ما موجودة) ---------- */
+    const USERS_KEY = 'debt_users_v1';
+    const DEBTS_KEY = 'debts_v_final';
+    const SESSION_KEY = 'debt_session';
+
+    function defaultInit(){
+      if(!localStorage.getItem(USERS_KEY)){
+        const defaults = [
+          {email:'admin@debt.app', password:'admin123', role:'admin', name:'المسؤول'},
+          {email:'viewer@debt.app', password:'viewer123', role:'viewer', name:'عارض'}
+        ];
+        localStorage.setItem(USERS_KEY, JSON.stringify(defaults));
+      }
+      if(!localStorage.getItem(DEBTS_KEY)){
+        // عينة بيانات صغيرة (اختياري)
+        const sample = [
+          {id:Date.now()+1, customer:'أحمد', amount:150, dueDate: addDaysISO(-2), note:'دفعة جزئية', paid:false, created: new Date().toISOString()},
+          {id:Date.now()+2, customer:'سعيد', amount:300, dueDate: addDaysISO(4), note:'دين جديد', paid:false, created: new Date().toISOString()},
+          {id:Date.now()+3, customer:'أحمد', amount:100, dueDate: addDaysISO(10), note:'باقي', paid:false, created: new Date().toISOString()},
+          {id:Date.now()+4, customer:'منى', amount:200, dueDate: addDaysISO(-6), note:'متأخر', paid:false, created: new Date().toISOString()}
+        ];
+        localStorage.setItem(DEBTS_KEY, JSON.stringify(sample));
+      }
+    }
+
+    function addDaysISO(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+
+    defaultInit();
+
+    /* ---------- أدوات مساعدة ---------- */
+    function loadUsers(){ return JSON.parse(localStorage.getItem(USERS_KEY) || '[]'); }
+    function saveUsers(u){ localStorage.setItem(USERS_KEY, JSON.stringify(u)); }
+    function loadDebts(){ return JSON.parse(localStorage.getItem(DEBTS_KEY) || '[]'); }
+    function saveDebts(arr){ localStorage.setItem(DEBTS_KEY, JSON.stringify(arr)); }
+    function setSession(user){ sessionStorage.setItem(SESSION_KEY, JSON.stringify(user)); }
+    function clearSession(){ sessionStorage.removeItem(SESSION_KEY); }
+    function getSession(){ return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); }
+    function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+
+    /* ---------- عناصر الصفحة ---------- */
+    const loginView = document.getElementById('loginView');
+    const appView = document.getElementById('appView');
+    const loginForm = document.getElementById('loginForm');
+    const demoAdmin = document.getElementById('demoAdmin');
+    const demoViewer = document.getElementById('demoViewer');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const welcomeText = document.getElementById('welcomeText');
+    const roleBadge = document.getElementById('roleBadge');
+    const manageUsersBtn = document.getElementById('manageUsersBtn');
+
+    const globalAddBtn = document.getElementById('globalAddBtn');
+    const debtModalEl = document.getElementById('debtModal');
+    const debtModal = new bootstrap.Modal(debtModalEl);
+    const debtForm = document.getElementById('debtForm');
+    const debtModalTitle = document.getElementById('debtModalTitle');
+    const editingDebtId = document.getElementById('editingDebtId');
+
+    const customersBody = document.getElementById('customersBody');
+    const sumAll = document.getElementById('sumAll');
+    const sumPaid = document.getElementById('sumPaid');
+    const sumUnpaid = document.getElementById('sumUnpaid');
+    const sumOverdue = document.getElementById('sumOverdue');
+    const searchInput = document.getElementById('searchInput');
+    const filterSelect = document.getElementById('filterSelect');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+
+    const usersModal = new bootstrap.Modal(document.getElementById('usersModal'));
+    const manageUsersBtnEl = document.getElementById('manageUsersBtn');
+    const usersListDiv = document.getElementById('usersList');
+    const newUserEmail = document.getElementById('newUserEmail');
+    const newUserPass = document.getElementById('newUserPass');
+    const newUserRole = document.getElementById('newUserRole');
+    const addUserBtn = document.getElementById('addUserBtn');
+
+    /* ---------- تسجيل دخول ---------- */
+    loginForm.addEventListener('submit', e=>{
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const pass = document.getElementById('loginPassword').value;
+      const users = loadUsers();
+      const u = users.find(x=>x.email.toLowerCase()===email.toLowerCase() && x.password===pass);
+      if(!u){ alert('خطأ بالإيميل أو كلمة المرور'); return; }
+      setSession({email:u.email, role:u.role, name:u.name || u.email});
+      showApp();
+    });
+
+    demoAdmin.addEventListener('click', ()=>{
+      document.getElementById('loginEmail').value = 'admin@debt.app';
+      document.getElementById('loginPassword').value = 'admin123';
+    });
+    demoViewer.addEventListener('click', ()=>{
+      document.getElementById('loginEmail').value = 'viewer@debt.app';
+      document.getElementById('loginPassword').value = 'viewer123';
+    });
+
+    logoutBtn.addEventListener('click', ()=>{
+      clearSession();
+      location.reload();
+    });
+
+    function showApp(){
+      const s = getSession();
+      if(!s){ loginView.style.display='block'; appView.style.display='none'; return; }
+      loginView.style.display='none'; appView.style.display='block';
+      welcomeText.innerHTML = `مرحباً، <b>${escapeHtml(s.name || s.email)}</b>`;
+      roleBadge.innerHTML = s.role === 'admin' ? '<span class="badge bg-primary">Admin</span>' : '<span class="badge bg-secondary">Viewer</span>';
+      // صلاحيات
+      if(s.role === 'admin'){ manageUsersBtn.style.display='inline-block'; manageUsersBtn.onclick = ()=> usersModal.show(); }
+      else { manageUsersBtn.style.display='none'; }
+      // زر الإضافة يظهر أو يخفي
+      globalAddBtn.style.display = s.role === 'viewer' ? 'none' : 'flex';
+      renderAll();
+      renderUsersList();
+    }
+
+    /* ---------- إدارة المستخدمين (Admin) ---------- */
+    function renderUsersList(){
+      const users = loadUsers();
+      usersListDiv.innerHTML = '';
+      users.forEach((u,i)=>{
+        const div = document.createElement('div');
+        div.className = 'd-flex align-items-center justify-content-between mb-2';
+        div.innerHTML = `<div><b>${escapeHtml(u.email)}</b> — <small class="text-muted">${u.role}</small></div>
+          <div>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${i})">حذف</button>
+            <button class="btn btn-sm btn-outline-primary ms-1" onclick="resetPass(${i})">إعادة تعيين كلمة السر</button>
+          </div>`;
+        usersListDiv.appendChild(div);
+      });
+    }
+    window.deleteUser = function(i){
+      if(!confirm('تريد تحذف هذا المستخدم؟')) return;
+      const users = loadUsers();
+      users.splice(i,1);
+      saveUsers(users);
+      renderUsersList();
+    }
+    window.resetPass = function(i){
+      const users = loadUsers();
+      const newPass = prompt('ادخل كلمة المرور الجديدة للمستخدم:', users[i].password);
+      if(newPass===null) return;
+      users[i].password = newPass;
+      saveUsers(users);
+      alert('تم التحديث');
+      renderUsersList();
+    }
+    addUserBtn.addEventListener('click', ()=>{
+      const em = newUserEmail.value.trim();
+      const pw = newUserPass.value.trim();
+      const role = newUserRole.value;
+      if(!em || !pw){ alert('أكمل الحقول'); return; }
+      const users = loadUsers();
+      if(users.find(x=>x.email.toLowerCase()===em.toLowerCase())){ alert('هذا البريد مسجل بالفعل'); return; }
+      users.push({email:em, password:pw, role:role, name:em.split('@')[0]});
+      saveUsers(users);
+      newUserEmail.value=''; newUserPass.value=''; newUserRole.value='viewer';
+      renderUsersList();
+      alert('تمت الإضافة');
+    });
+
+    /* ---------- إضافة / تعديل الديون ---------- */
+    globalAddBtn.addEventListener('click', ()=> openAddModal());
+    function openAddModal(prefillCustomer=''){
+      editingDebtId.value = '';
+      debtModalTitle.textContent = 'إضافة دين جديد';
+      document.getElementById('debtCustomer').value = prefillCustomer;
+      document.getElementById('debtAmount').value = '';
+      document.getElementById('debtDue').value = new Date().toISOString().slice(0,10);
+      document.getElementById('debtNote').value = '';
+      debtModal.show();
+    }
+
+    debtForm.addEventListener('submit', e=>{
+      e.preventDefault();
+      const id = editingDebtId.value;
+      const customer = document.getElementById('debtCustomer').value.trim();
+      const amount = Number(document.getElementById('debtAmount').value) || 0;
+      const due = document.getElementById('debtDue').value;
+      const note = document.getElementById('debtNote').value.trim();
+      if(!customer || !due || amount<=0){ alert('اكمل الحقول بشكل صحيح'); return; }
+      const debts = loadDebts();
+      if(id){
+        // تعديل
+        const idx = debts.findIndex(x=>x.id==id);
+        if(idx>=0){
+          debts[idx].customer = customer;
+          debts[idx].amount = amount;
+          debts[idx].dueDate = due;
+          debts[idx].note = note;
+        }
+      } else {
+        debts.push({id: Date.now().toString(), customer, amount, dueDate: due, note, paid:false, created: new Date().toISOString()});
+      }
+      saveDebts(debts);
+      debtModal.hide();
+      renderAll();
+    });
+
+    /* ---------- عرض الزبائن وجمع الديون ---------- */
+    function renderAll(){
+      const debts = loadDebts();
+      const now = new Date();
+      // تجميع حسب الزبون
+      const map = {};
+      debts.forEach(d=>{
+        const key = (d.customer||'غير معروف').trim();
+        if(!map[key]) map[key] = {customer:key, debts:[], total:0, unpaid:0, paid:0, overdue:0};
+        map[key].debts.push(d);
+        map[key].total += Number(d.amount||0);
+        if(d.paid) map[key].paid += Number(d.amount||0);
+        else map[key].unpaid += Number(d.amount||0);
+        const due = new Date((d.dueDate||'') + 'T00:00:00');
+        if(!d.paid && (due < new Date(now.toDateString()))) map[key].overdue += Number(d.amount||0);
+      });
+      // تحويل للخانة مرتبة
+      const customers = Object.values(map).sort((a,b)=> b.total - a.total);
+      // احصائيات عامة
+      let totAll=0, totPaid=0, totUn=0, totOver=0;
+      debts.forEach(d=>{
+        totAll += Number(d.amount||0);
+        if(d.paid) totPaid += Number(d.amount||0); else totUn += Number(d.amount||0);
+        const due = new Date((d.dueDate||'') + 'T00:00:00');
+        if(!d.paid && (due < new Date(now.toDateString()))) totOver += Number(d.amount||0);
+      });
+      sumAll.textContent = totAll.toLocaleString();
+      sumPaid.textContent = totPaid.toLocaleString();
+      sumUnpaid.textContent = totUn.toLocaleString();
+      sumOverdue.textContent = totOver.toLocaleString();
+
+      // فلترة + بحث
+      const q = (searchInput.value||'').trim().toLowerCase();
+      const f = filterSelect.value;
+
+      customersBody.innerHTML = '';
+      customers.forEach((c,ci)=>{
+        const matchesQ = c.customer.toLowerCase().includes(q) || c.debts.some(dd=> (dd.note||'').toLowerCase().includes(q) );
+        if(!matchesQ) return;
+        if(f==='overdue' && c.overdue<=0) return;
+        if(f==='paid' && c.unpaid>0) return;
+        if(f==='unpaid' && c.unpaid==0) return;
+
+        const tr = document.createElement('tr');
+        // status: إذا كل ديون الزبون مدفوعة -> مدفوع
+        let statusHtml = c.unpaid==0 ? '<span class="badge bg-success">مدفوع</span>' : '<span class="badge bg-warning text-dark">مسجل ديون</span>';
+        tr.innerHTML = `
+          <td><a href="#" class="customer-toggle" data-idx="${ci}">${escapeHtml(c.customer)}</a></td>
+          <td>${c.debts.length}</td>
+          <td>${c.total.toLocaleString()}</td>
+          <td>${c.unpaid.toLocaleString()}</td>
+          <td>${statusHtml}</td>
+          <td>
+            ${getSession().role==='admin' ? `<button class="btn btn-sm btn-outline-success me-1" onclick="openAddForCustomer('${escapeForAttr(c.customer)}')"><i class="bi bi-plus"></i> دين</button>` : ''}
+            <button class="btn btn-sm btn-outline-primary me-1" onclick="toggleDetails(${ci})"><i class="bi bi-eye"></i> عرض</button>
+            ${getSession().role==='admin' ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteAllCustomer('${escapeForAttr(c.customer)}')"><i class="bi bi-trash"></i> حذف كل</button>` : ''}
+          </td>
+        `;
+        customersBody.appendChild(tr);
+
+        // صف التفاصيل (مخفي)
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'detail-row';
+        detailTr.style.display = 'none';
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        // جدول داخلي للديون
+        const innerTable = document.createElement('table');
+        innerTable.className = 'table table-sm mb-0';
+        innerTable.innerHTML = `<thead><tr><th>المبلغ</th><th>تاريخ الاستحقاق</th><th>ملاحظة</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody></tbody>`;
+        const innerBody = innerTable.querySelector('tbody');
+        c.debts.forEach(d=>{
+          const r = document.createElement('tr');
+          // حالة اللون
+          const due = new Date((d.dueDate||'')+'T00:00:00');
+          if(!d.paid){
+            const nowd = new Date();
+            if(due < new Date(nowd.toDateString())) r.classList.add('table-danger');
+            else {
+              const daysLeft = Math.ceil((due - nowd)/(1000*60*60*24));
+              if(daysLeft<=3) r.classList.add('table-warning');
+            }
+          } else r.classList.add('paid-row');
+
+          r.innerHTML = `
+            <td>${Number(d.amount).toLocaleString()}</td>
+            <td>${d.dueDate}</td>
+            <td title="${escapeHtml(d.note||'')}">${escapeHtml(d.note||'')}</td>
+            <td>${d.paid ? '<span class="badge bg-success">مدفوع</span>' : '<span class="badge bg-warning text-dark">غير مدفوع</span>'}</td>
+            <td>
+              ${getSession().role==='admin' && !d.paid ? `<button class="btn btn-sm btn-outline-success me-1" onclick="markPaid('${d.id}')"><i class="bi bi-check2"></i></button>` : ''}
+              ${getSession().role==='admin' ? `<button class="btn btn-sm btn-outline-primary me-1" onclick="editDebt('${d.id}')"><i class="bi bi-pencil"></i></button>` : ''}
+              ${getSession().role==='admin' ? `<button class="btn btn-sm btn-outline-danger" onclick="deleteDebt('${d.id}')"><i class="bi bi-trash"></i></button>` : ''}
+            </td>
+          `;
+          innerBody.appendChild(r);
+        });
+
+        td.appendChild(innerTable);
+        detailTr.appendChild(td);
+        customersBody.appendChild(detailTr);
+      });
+    }
+
+    function escapeForAttr(s){ return (s||'').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+    // فتح إضافة دين للزبون مباشرة
+    window.openAddForCustomer = function(name){
+      openAddModal(name);
+    }
+
+    // تبديل عرض التفاصيل
+    function toggleDetails(ci){
+      const rows = document.querySelectorAll('#customersBody .detail-row');
+      // نعثر على الصف المرتبط بالـ index: بما أننا نعيد بناء القائمة كل مرة، نستخدم الترتيب
+      const allDetailRows = Array.from(rows);
+      if(!allDetailRows[ci]) return;
+      allDetailRows.forEach(r=> r.style.display = 'none');
+      allDetailRows[ci].style.display = allDetailRows[ci].style.display === 'none' ? '' : 'none';
+    }
+    window.toggleDetails = toggleDetails;
+
+    // حذف كل ديون زبون
+    window.deleteAllCustomer = function(customer){
+      if(!confirm('تحذف كل الديون لهذا الزبون؟')) return;
+      let debts = loadDebts();
+      debts = debts.filter(d=> d.customer !== customer);
+      saveDebts(debts);
+      renderAll();
+    }
+
+    // علامات: تسديد، حذف، تعديل
+    window.markPaid = function(id){
+      const debts = loadDebts();
+      const idx = debts.findIndex(x=>x.id==id);
+      if(idx<0) return;
+      debts[idx].paid = true;
+      debts[idx].paidAt = new Date().toISOString();
+      saveDebts(debts);
+      renderAll();
+    }
+    window.deleteDebt = function(id){
+      if(!confirm('تأكيد حذف الدين؟')) return;
+      let debts = loadDebts();
+      debts = debts.filter(x=> x.id!=id);
+      saveDebts(debts);
+      renderAll();
+    }
+    window.editDebt = function(id){
+      const debts = loadDebts();
+      const d = debts.find(x=>x.id==id);
+      if(!d) return;
+      debtModalTitle.textContent = 'تعديل الدين';
+      document.getElementById('debtCustomer').value = d.customer;
+      document.getElementById('debtAmount').value = d.amount;
+      document.getElementById('debtDue').value = d.dueDate;
+      document.getElementById('debtNote').value = d.note || '';
+      editingDebtId.value = d.id;
+      debtModal.show();
+    }
+
+    /* ---------- تصدير CSV ---------- */
+    exportCsvBtn.addEventListener('click', ()=>{
+      const debts = loadDebts();
+      if(!debts.length){ alert('لا توجد بيانات للتصدير'); return; }
+      const rows = [['id','customer','note','amount','dueDate','paid']];
+      debts.forEach(d=> rows.push([d.id, d.customer.replace(/"/g,'""'), (d.note||'').replace(/"/g,'""'), d.amount, d.dueDate, d.paid]));
+      const csv = rows.map(r => r.map(v=>`"${v}"`).join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'debts_export.csv'; a.click(); URL.revokeObjectURL(url);
+    });
+
+    /* ---------- استماع لأحداث البحث والفلتر ---------- */
+    searchInput.addEventListener('input', renderAll);
+    filterSelect.addEventListener('change', renderAll);
+
+    /* ---------- تهيئة عند التحميل ---------- */
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const s = getSession();
+      if(s) showApp();
+      else { loginView.style.display='block'; appView.style.display='none'; }
+      // إخفاء زر + لو هو viewer
+      const cur = getSession();
+      if(cur && cur.role==='viewer') globalAddBtn.style.display='none';
+      // تفعيل فتح المودال من زر الـ + (لو admin)
+      globalAddBtn.addEventListener('click', ()=>{
+        const cur = getSession();
+        if(!cur || cur.role!=='admin'){ alert('ما عندك صلاحية لإضافة دين'); return; }
+        openAddModal('');
+      });
+    });
+
+    // عرض أو إخفاء مودال المستخدمين بناءً على صلاحية
+    manageUsersBtn.addEventListener('click', ()=> {
+      if(getSession().role!=='admin'){ alert('غير مصرح'); return; }
+      usersModal.show();
+    });
+
+    // وظيفة مساعدة للتحقق من تواريخ الـ overdue بشكل ثابت (صفر ساعة)
+    Date.prototype.toDateString = (function(orig){
+      return function(){ return orig.call(this); }
+    })(Date.prototype.toDateString);
+  </script>
+</body>
+</html>
